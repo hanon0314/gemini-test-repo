@@ -1,0 +1,35 @@
+name: Gemini Issue Agent
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  fix-issue:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: install gemini cli
+        run: npm install -g @google/gemini-cli
+
+      - name: run gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          gemini "Fix the GitHub issue: ${{ github.event.issue.title }}"
+
+      - name: commit changes
+        run: |
+          git config user.name "gemini-bot"
+          git config user.email "bot@example.com"
+          git add .
+          git commit -m "AI fix for issue"
+          git push
