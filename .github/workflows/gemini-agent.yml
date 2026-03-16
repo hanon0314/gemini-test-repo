@@ -24,7 +24,7 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          gemini "Fix the GitHub issue: ${{ github.event.issue.title }}"
+          gemini --model gemini-2.0-flash "Fix the GitHub issue: ${{ github.event.issue.title }}"
 
       - name: commit changes
         run: |
