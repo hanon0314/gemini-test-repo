@@ -3,16 +3,18 @@
 import subprocess
 import sys
 
-def run(cmd):
+def run_gemini(prompt):
+
     result = subprocess.run(
-        cmd,
-        shell=True,
-        capture_output=True,
+        ["gemini"],
+        input=prompt,
         text=True,
+        capture_output=True,
         encoding="utf-8",
         errors="ignore"
     )
-    return result.stdout.strip() if result.stdout else ""
+
+    return result.stdout.strip()
 
 def main():
 
@@ -33,24 +35,21 @@ def main():
     prompt = f"""
     あなたはソフトウェアエンジニアです。
 
-    以下のGitHub Issueを読み取り、
-    必ず日本語で次の内容を出力してください。
+    次のGitHub Issueを解析してください。
+    必ず日本語で次を説明してください。
 
-    1. Issueの内容の要約
-    2. 問題の原因または要求内容
-    3. 修正方法の提案
-    4. 変更する可能性があるファイル
-    5. 具体的な修正内容
+    1. Issueの要約
+    2. 修正が必要な理由
+    3. 修正するファイル
+    4. 修正内容の具体例
 
-    まだコードは変更しないでください。
-    最後に「この修正で実装しますか？」と確認してください。
+    コード変更はまだ行わないでください。
 
     Issue:
-
     {issue}
     """
 
-    analysis = run(f'gemini "{prompt}"')
+    analysis = run_gemini(prompt)
 
     print(analysis)
 
