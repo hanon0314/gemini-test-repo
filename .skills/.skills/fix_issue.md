@@ -1,9 +1,13 @@
-Skill: Fix GitHub Issue
+Skill: fix_issue
+
+Purpose:
+Fix the issue in code.
 
 Steps:
-1. Read issue
-2. Analyze repository
-3. Create branch
-4. Implement fix
-5. Commit changes
-6. Create pull request
+1. read target file
+2. modify code
+3. generate git diff
+
+Tools used:
+read_file
+apply_patch

@@ -3,6 +3,7 @@
 import subprocess
 import json
 import sys
+import re
 
 
 def run(cmd):
@@ -21,12 +22,13 @@ def run(cmd):
 
 def run_gemini(prompt):
 
+    cmd = f'gemini "{prompt}"'
+
     result = subprocess.run(
-        "gemini",
-        input=prompt,
+        cmd,
         shell=True,
-        text=True,
         capture_output=True,
+        text=True,
         encoding="utf-8",
         errors="ignore"
     )
@@ -34,25 +36,35 @@ def run_gemini(prompt):
     return result.stdout.strip()
 
 
-# -----------------------------
-# tools
-# -----------------------------
+def extract_json(text):
 
-def tool_search_code(keyword):
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+
+    if match:
+        return json.loads(match.group())
+
+    return None
+
+
+# ----------------
+# tools
+# ----------------
+
+def search_code(keyword):
 
     print("🔎 search_code:", keyword)
 
     return run(f'git grep "{keyword}"')
 
 
-def tool_read_file(path):
+def read_file(path):
 
     print("📄 read_file:", path)
 
     return run(f"type {path}")
 
 
-def tool_apply_patch(diff):
+def apply_patch(diff):
 
     with open("patch.diff", "w", encoding="utf-8") as f:
         f.write(diff)
@@ -63,10 +75,25 @@ def tool_apply_patch(diff):
 
 
 TOOLS = {
-    "search_code": tool_search_code,
-    "read_file": tool_read_file,
-    "apply_patch": tool_apply_patch
+    "search_code": search_code,
+    "read_file": read_file,
+    "apply_patch": apply_patch
 }
+
+
+def load_skills():
+
+    skills = {}
+
+    for skill in ["analyze_repo", "locate_code", "fix_issue", "run_tests"]:
+
+        try:
+            with open(f".skills/{skill}.md", "r", encoding="utf-8") as f:
+                skills[skill] = f.read()
+        except:
+            pass
+
+    return skills
 
 
 def main():
@@ -80,9 +107,9 @@ def main():
     issue_json = run(f"gh issue view {issue_number} --json title,body")
     issue = json.loads(issue_json)
 
-    print(issue)
-
     repo_files = run("git ls-files")
+
+    skills = load_skills()
 
     conversation = f"""
 You are an autonomous coding agent.
@@ -96,32 +123,24 @@ Issue:
 Title: {issue['title']}
 Body: {issue['body']}
 
+Available Skills:
+
+{skills}
+
 Available tools:
 
 search_code(keyword)
 read_file(path)
 apply_patch(diff)
 
-Respond only in JSON format.
+Respond ONLY in JSON.
 
 Example:
 
-{{
-  "action": "search_code",
-  "input": "hello"
-}}
-
-If the fix is ready:
-
-{{
-  "action": "apply_patch",
-  "input": "diff --git ..."
-}}
-
-Begin solving the issue.
+{{"skill":"locate_code","action":"search_code","input":"hello"}}
 """
 
-    for step in range(10):
+    for step in range(15):
 
         print("\n🤖 Agent thinking...\n")
 
@@ -129,18 +148,13 @@ Begin solving the issue.
 
         print(response)
 
-        try:
-            action = json.loads(response)
-        except:
-            print("Invalid response")
-            return
+        action = extract_json(response)
+
+        if not action:
+            continue
 
         tool = action["action"]
         inp = action["input"]
-
-        if tool not in TOOLS:
-            print("Unknown tool:", tool)
-            return
 
         result = TOOLS[tool](inp)
 
@@ -148,8 +162,6 @@ Begin solving the issue.
 
         if tool == "apply_patch":
             break
-
-    print("\n🌿 Creating branch\n")
 
     branch = f"ai-fix-{issue_number}"
 

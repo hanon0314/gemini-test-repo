@@ -1,7 +1,13 @@
-Skill: Analyze Repository
+Skill: analyze_repo
+
+Purpose:
+Understand repository structure.
 
 Steps:
-1. Read repository structure
-2. Detect programming language
-3. Identify main files
-4. Understand project layout
+1. list repository files
+2. detect main source files
+3. detect tests
+
+Tools used:
+search_code
+read_file
