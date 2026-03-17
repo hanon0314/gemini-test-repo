@@ -6,6 +6,10 @@ import sys
 import re
 
 
+# -----------------------------
+# utility
+# -----------------------------
+
 def run(cmd):
 
     result = subprocess.run(
@@ -38,17 +42,20 @@ def run_gemini(prompt):
 
 def extract_json(text):
 
-    match = re.search(r"\{.*\}", text, re.DOTALL)
+    match = re.search(r"\{.*?\}", text, re.DOTALL)
 
     if match:
-        return json.loads(match.group())
+        try:
+            return json.loads(match.group())
+        except:
+            return None
 
     return None
 
 
-# ----------------
+# -----------------------------
 # tools
-# ----------------
+# -----------------------------
 
 def search_code(keyword):
 
@@ -66,6 +73,8 @@ def read_file(path):
 
 def apply_patch(diff):
 
+    print("🛠 applying patch")
+
     with open("patch.diff", "w", encoding="utf-8") as f:
         f.write(diff)
 
@@ -81,20 +90,9 @@ TOOLS = {
 }
 
 
-def load_skills():
-
-    skills = {}
-
-    for skill in ["analyze_repo", "locate_code", "fix_issue", "run_tests"]:
-
-        try:
-            with open(f".skills/{skill}.md", "r", encoding="utf-8") as f:
-                skills[skill] = f.read()
-        except:
-            pass
-
-    return skills
-
+# -----------------------------
+# main agent
+# -----------------------------
 
 def main():
 
@@ -109,10 +107,23 @@ def main():
 
     repo_files = run("git ls-files")
 
-    skills = load_skills()
-
     conversation = f"""
 You are an autonomous coding agent.
+
+Respond ONLY in JSON.
+No explanation.
+
+Format:
+
+{{"action":"search_code","input":"keyword"}}
+
+or
+
+{{"action":"read_file","input":"path"}}
+
+or
+
+{{"action":"apply_patch","input":"diff"}}
 
 Repository files:
 
@@ -122,22 +133,6 @@ Issue:
 
 Title: {issue['title']}
 Body: {issue['body']}
-
-Available Skills:
-
-{skills}
-
-Available tools:
-
-search_code(keyword)
-read_file(path)
-apply_patch(diff)
-
-Respond ONLY in JSON.
-
-Example:
-
-{{"skill":"locate_code","action":"search_code","input":"hello"}}
 """
 
     for step in range(15):
@@ -151,10 +146,15 @@ Example:
         action = extract_json(response)
 
         if not action:
+            print("⚠️ AI response not JSON, retrying...")
             continue
 
-        tool = action["action"]
-        inp = action["input"]
+        tool = action.get("action")
+        inp = action.get("input")
+
+        if tool not in TOOLS:
+            print("⚠️ Unknown tool:", tool)
+            continue
 
         result = TOOLS[tool](inp)
 
@@ -162,6 +162,8 @@ Example:
 
         if tool == "apply_patch":
             break
+
+    print("\n🌿 Creating branch")
 
     branch = f"ai-fix-{issue_number}"
 
@@ -172,6 +174,8 @@ Example:
     run(f'git commit -m "AI fix for issue #{issue_number}"')
 
     run(f"git push origin {branch}")
+
+    print("\n📤 Creating PR")
 
     run("gh pr create --fill")
 
