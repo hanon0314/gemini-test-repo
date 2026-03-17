@@ -24,25 +24,31 @@ def main():
 
     print(f"\n📥 Fetching Issue #{issue_number}\n")
 
-    issue = run(f"gh issue view {issue_number}")
+    issue = run(f"gh issue view {issue_number} --json title,body")
 
     print(issue)
 
     print("\n🤖 Gemini analyzing...\n")
 
     prompt = f"""
-Read the GitHub issue.
+    あなたはソフトウェアエンジニアです。
 
-1. Explain requirement
-2. Identify root cause
-3. Propose fix
-4. Ask for approval
-Do NOT implement yet.
+    以下のGitHub Issueを読み取り、
+    必ず日本語で次の内容を出力してください。
 
-Issue:
+    1. Issueの内容の要約
+    2. 問題の原因または要求内容
+    3. 修正方法の提案
+    4. 変更する可能性があるファイル
+    5. 具体的な修正内容
 
-{issue}
-"""
+    まだコードは変更しないでください。
+    最後に「この修正で実装しますか？」と確認してください。
+
+    Issue:
+
+    {issue}
+    """
 
     analysis = run(f'gemini "{prompt}"')
 
