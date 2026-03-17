@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 
 import subprocess
+import json
 import sys
+import re
+
+
+# -----------------------------
+# utility
+# -----------------------------
 
 def run(cmd):
+
     result = subprocess.run(
         cmd,
         shell=True,
@@ -12,7 +20,79 @@ def run(cmd):
         encoding="utf-8",
         errors="ignore"
     )
-    return result.stdout.strip() if result.stdout else ""
+
+    return result.stdout.strip()
+
+
+def run_gemini(prompt):
+
+    cmd = f'gemini "{prompt}"'
+
+    result = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore"
+    )
+
+    return result.stdout.strip()
+
+
+def extract_json(text):
+
+    match = re.search(r"\{.*?\}", text, re.DOTALL)
+
+    if match:
+        try:
+            return json.loads(match.group())
+        except:
+            return None
+
+    return None
+
+
+# -----------------------------
+# tools
+# -----------------------------
+
+def search_code(keyword):
+
+    print("🔎 search_code:", keyword)
+
+    return run(f'git grep "{keyword}"')
+
+
+def read_file(path):
+
+    print("📄 read_file:", path)
+
+    return run(f"type {path}")
+
+
+def apply_patch(diff):
+
+    print("🛠 applying patch")
+
+    with open("patch.diff", "w", encoding="utf-8") as f:
+        f.write(diff)
+
+    run("git apply patch.diff")
+
+    return "patch applied"
+
+
+TOOLS = {
+    "search_code": search_code,
+    "read_file": read_file,
+    "apply_patch": apply_patch
+}
+
+
+# -----------------------------
+# main agent
+# -----------------------------
 
 def main():
 
@@ -22,56 +102,85 @@ def main():
 
     issue_number = sys.argv[1]
 
-    print(f"\n📥 Fetching Issue #{issue_number}\n")
+    issue_json = run(f"gh issue view {issue_number} --json title,body")
+    issue = json.loads(issue_json)
 
-    issue = run(f"gh issue view {issue_number}")
+    repo_files = run("git ls-files")
 
-    print(issue)
+    conversation = f"""
+You are an autonomous coding agent.
 
-    print("\n🤖 Gemini analyzing...\n")
+Respond ONLY in JSON.
+No explanation.
 
-    prompt = f"""
-Read the GitHub issue.
+Format:
 
-1. Explain requirement
-2. Identify root cause
-3. Propose fix
-4. Ask for approval
-Do NOT implement yet.
+{{"action":"search_code","input":"keyword"}}
+
+or
+
+{{"action":"read_file","input":"path"}}
+
+or
+
+{{"action":"apply_patch","input":"diff"}}
+
+Repository files:
+
+{repo_files}
 
 Issue:
 
-{issue}
+Title: {issue['title']}
+Body: {issue['body']}
 """
 
-    analysis = run(f'gemini "{prompt}"')
+    for step in range(15):
 
-    print(analysis)
+        print("\n🤖 Agent thinking...\n")
 
-    approval = input("\nApprove implementation? (yes/no): ")
+        response = run_gemini(conversation)
 
-    if approval.lower() != "yes":
-        print("Cancelled")
-        return
+        print(response)
 
-    print("\n🛠 Implementing fix...\n")
+        action = extract_json(response)
 
-    implement_prompt = f"""
-Implement the fix.
+        if not action:
+            print("⚠️ AI response not JSON, retrying...")
+            continue
 
-Steps:
-1. Create branch
-2. Implement change
-3. Commit changes
-"""
+        tool = action.get("action")
+        inp = action.get("input")
 
-    run(f'gemini "{implement_prompt}"')
+        if tool not in TOOLS:
+            print("⚠️ Unknown tool:", tool)
+            continue
 
-    print("\n📤 Creating Pull Request...\n")
+        result = TOOLS[tool](inp)
+
+        conversation += f"\nTool result:\n{result}\n"
+
+        if tool == "apply_patch":
+            break
+
+    print("\n🌿 Creating branch")
+
+    branch = f"ai-fix-{issue_number}"
+
+    run(f"git checkout -b {branch}")
+
+    run("git add .")
+
+    run(f'git commit -m "AI fix for issue #{issue_number}"')
+
+    run(f"git push origin {branch}")
+
+    print("\n📤 Creating PR")
 
     run("gh pr create --fill")
 
     print("\n✅ Done")
+
 
 if __name__ == "__main__":
     main()
