@@ -22,6 +22,7 @@ def run_gemini(prompt):
     result = subprocess.run(
         ["gemini"],
         input=prompt,
+        shell=True,
         text=True,
         capture_output=True,
         encoding="utf-8",
@@ -76,15 +77,40 @@ def main():
     print("\n🛠 Implementing fix...\n")
 
     implement_prompt = f"""
-Implement the fix.
+    次のGitHub Issueを修正してください。
 
-Steps:
-1. Create branch
-2. Implement change
-3. Commit changes
-"""
+    必ず次の形式で出力してください。
 
-    run(f'gemini "{implement_prompt}"')
+    diff形式で変更内容を提示してください。
+
+    例:
+
+    diff --git a/file.py b/file.py
+    -print("こんにちは")
+    +print("こんばんわ")
+
+    Issue:
+    {issue}
+    """
+
+    fix = run_gemini(implement_prompt)
+
+    print("\nAI proposed diff:\n")
+    print(fix)
+
+    apply = input("\nApply this patch? (yes/no): ")
+
+    if apply.lower() != "yes":
+        print("Patch cancelled")
+        return
+
+    with open("patch.diff", "w", encoding="utf-8") as f:
+        f.write(fix)
+
+    run("git apply patch.diff")
+
+    run("git add .")
+    run('git commit -m "AI fix"')
 
     print("\n📤 Creating Pull Request...\n")
 
