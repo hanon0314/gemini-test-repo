@@ -2,9 +2,10 @@
 
 import subprocess
 import sys
+import json
+
 
 def run(cmd):
-
     result = subprocess.run(
         cmd,
         shell=True,
@@ -13,14 +14,13 @@ def run(cmd):
         encoding="utf-8",
         errors="ignore"
     )
-
     return result.stdout.strip() if result.stdout else ""
 
 
 def run_gemini(prompt):
 
     result = subprocess.run(
-        ["gemini"],
+        "gemini",
         input=prompt,
         shell=True,
         text=True,
@@ -30,6 +30,7 @@ def run_gemini(prompt):
     )
 
     return result.stdout.strip()
+
 
 def main():
 
@@ -41,82 +42,150 @@ def main():
 
     print(f"\n📥 Fetching Issue #{issue_number}\n")
 
-    issue = run(f"gh issue view {issue_number} --json title,body")
+    issue_json = run(f"gh issue view {issue_number} --json title,body")
+
+    issue = json.loads(issue_json)
 
     print(issue)
+
+    # ---------------------------
+    # repository analysis
+    # ---------------------------
+
+    repo_files = run("git ls-files")
+
+    print("\n📂 Repository files\n")
+    print(repo_files)
+
+    # ---------------------------
+    # search code
+    # ---------------------------
+
+    search = run("git grep こんにちは")
+
+    print("\n🔎 Code search results\n")
+    print(search)
+
+    # ---------------------------
+    # analysis
+    # ---------------------------
 
     print("\n🤖 Gemini analyzing...\n")
 
     prompt = f"""
-    あなたはソフトウェアエンジニアです。
+あなたはソフトウェアエンジニアです。
 
-    次のGitHub Issueを解析してください。
-    必ず日本語で次を説明してください。
+GitHub Issue を修正するために
+リポジトリを解析してください。
 
-    1. Issueの要約
-    2. 修正が必要な理由
-    3. 修正するファイル
-    4. 修正内容の具体例
+Repository files:
 
-    コード変更はまだ行わないでください。
+{repo_files}
 
-    Issue:
-    {issue}
-    """
+Code search results:
+
+{search}
+
+Issue:
+
+Title: {issue['title']}
+Body: {issue['body']}
+
+以下を日本語で回答してください。
+
+1 Issueの要約
+2 原因
+3 修正対象ファイル
+4 修正方法
+
+まだコードは変更しないでください。
+"""
 
     analysis = run_gemini(prompt)
 
     print(analysis)
 
-    approval = input("\nApprove implementation? (yes/no): ")
+    approval = input("\nこの修正案で実装しますか？ (yes/no): ")
 
     if approval.lower() != "yes":
-        print("Cancelled")
+        print("❌ Cancelled")
         return
 
-    print("\n🛠 Implementing fix...\n")
+    # ---------------------------
+    # implementation
+    # ---------------------------
+
+    print("\n🛠 Gemini generating patch...\n")
 
     implement_prompt = f"""
-    次のGitHub Issueを修正してください。
+次のIssueを修正してください。
 
-    必ず次の形式で出力してください。
+Repository files:
 
-    diff形式で変更内容を提示してください。
+{repo_files}
 
-    例:
+Code search results:
 
-    diff --git a/file.py b/file.py
-    -print("こんにちは")
-    +print("こんばんわ")
+{search}
 
-    Issue:
-    {issue}
-    """
+Issue:
 
-    fix = run_gemini(implement_prompt)
+Title: {issue['title']}
+Body: {issue['body']}
 
-    print("\nAI proposed diff:\n")
-    print(fix)
+git diff形式で修正を出力してください。
+
+例:
+
+diff --git a/file.py b/file.py
+-print("こんにちは")
++print("こんばんわ")
+"""
+
+    diff = run_gemini(implement_prompt)
+
+    print("\n📄 Proposed diff\n")
+    print(diff)
 
     apply = input("\nApply this patch? (yes/no): ")
 
     if apply.lower() != "yes":
-        print("Patch cancelled")
+        print("❌ Patch cancelled")
         return
 
+    # ---------------------------
+    # apply patch
+    # ---------------------------
+
     with open("patch.diff", "w", encoding="utf-8") as f:
-        f.write(fix)
+        f.write(diff)
 
     run("git apply patch.diff")
 
-    run("git add .")
-    run('git commit -m "AI fix"')
+    # ---------------------------
+    # commit
+    # ---------------------------
 
-    print("\n📤 Creating Pull Request...\n")
+    branch = f"ai-fix-{issue_number}"
+
+    run(f"git checkout -b {branch}")
+    run("git add .")
+    run(f'git commit -m "AI fix for issue #{issue_number}"')
+
+    # ---------------------------
+    # push
+    # ---------------------------
+
+    run(f"git push origin {branch}")
+
+    # ---------------------------
+    # create PR
+    # ---------------------------
 
     run("gh pr create --fill")
 
     print("\n✅ Done")
+
 
 if __name__ == "__main__":
     main()
