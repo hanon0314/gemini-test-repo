@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 import subprocess
-import sys
 import json
+import sys
 
 
 def run(cmd):
+
     result = subprocess.run(
         cmd,
         shell=True,
@@ -14,7 +15,8 @@ def run(cmd):
         encoding="utf-8",
         errors="ignore"
     )
-    return result.stdout.strip() if result.stdout else ""
+
+    return result.stdout.strip()
 
 
 def run_gemini(prompt):
@@ -32,6 +34,41 @@ def run_gemini(prompt):
     return result.stdout.strip()
 
 
+# -----------------------------
+# tools
+# -----------------------------
+
+def tool_search_code(keyword):
+
+    print("🔎 search_code:", keyword)
+
+    return run(f'git grep "{keyword}"')
+
+
+def tool_read_file(path):
+
+    print("📄 read_file:", path)
+
+    return run(f"type {path}")
+
+
+def tool_apply_patch(diff):
+
+    with open("patch.diff", "w", encoding="utf-8") as f:
+        f.write(diff)
+
+    run("git apply patch.diff")
+
+    return "patch applied"
+
+
+TOOLS = {
+    "search_code": tool_search_code,
+    "read_file": tool_read_file,
+    "apply_patch": tool_apply_patch
+}
+
+
 def main():
 
     if len(sys.argv) < 2:
@@ -40,147 +77,89 @@ def main():
 
     issue_number = sys.argv[1]
 
-    print(f"\n📥 Fetching Issue #{issue_number}\n")
-
     issue_json = run(f"gh issue view {issue_number} --json title,body")
-
     issue = json.loads(issue_json)
 
     print(issue)
 
-    # ---------------------------
-    # repository analysis
-    # ---------------------------
-
     repo_files = run("git ls-files")
 
-    print("\n📂 Repository files\n")
-    print(repo_files)
-
-    # ---------------------------
-    # search code
-    # ---------------------------
-
-    search = run("git grep こんにちは")
-
-    print("\n🔎 Code search results\n")
-    print(search)
-
-    # ---------------------------
-    # analysis
-    # ---------------------------
-
-    print("\n🤖 Gemini analyzing...\n")
-
-    prompt = f"""
-あなたはソフトウェアエンジニアです。
-
-GitHub Issue を修正するために
-リポジトリを解析してください。
+    conversation = f"""
+You are an autonomous coding agent.
 
 Repository files:
 
 {repo_files}
-
-Code search results:
-
-{search}
 
 Issue:
 
 Title: {issue['title']}
 Body: {issue['body']}
 
-以下を日本語で回答してください。
+Available tools:
 
-1 Issueの要約
-2 原因
-3 修正対象ファイル
-4 修正方法
+search_code(keyword)
+read_file(path)
+apply_patch(diff)
 
-まだコードは変更しないでください。
+Respond only in JSON format.
+
+Example:
+
+{{
+  "action": "search_code",
+  "input": "hello"
+}}
+
+If the fix is ready:
+
+{{
+  "action": "apply_patch",
+  "input": "diff --git ..."
+}}
+
+Begin solving the issue.
 """
 
-    analysis = run_gemini(prompt)
+    for step in range(10):
 
-    print(analysis)
+        print("\n🤖 Agent thinking...\n")
 
-    approval = input("\nこの修正案で実装しますか？ (yes/no): ")
+        response = run_gemini(conversation)
 
-    if approval.lower() != "yes":
-        print("❌ Cancelled")
-        return
+        print(response)
 
-    # ---------------------------
-    # implementation
-    # ---------------------------
+        try:
+            action = json.loads(response)
+        except:
+            print("Invalid response")
+            return
 
-    print("\n🛠 Gemini generating patch...\n")
+        tool = action["action"]
+        inp = action["input"]
 
-    implement_prompt = f"""
-次のIssueを修正してください。
+        if tool not in TOOLS:
+            print("Unknown tool:", tool)
+            return
 
-Repository files:
+        result = TOOLS[tool](inp)
 
-{repo_files}
+        conversation += f"\nTool result:\n{result}\n"
 
-Code search results:
+        if tool == "apply_patch":
+            break
 
-{search}
-
-Issue:
-
-Title: {issue['title']}
-Body: {issue['body']}
-
-git diff形式で修正を出力してください。
-
-例:
-
-diff --git a/file.py b/file.py
--print("こんにちは")
-+print("こんばんわ")
-"""
-
-    diff = run_gemini(implement_prompt)
-
-    print("\n📄 Proposed diff\n")
-    print(diff)
-
-    apply = input("\nApply this patch? (yes/no): ")
-
-    if apply.lower() != "yes":
-        print("❌ Patch cancelled")
-        return
-
-    # ---------------------------
-    # apply patch
-    # ---------------------------
-
-    with open("patch.diff", "w", encoding="utf-8") as f:
-        f.write(diff)
-
-    run("git apply patch.diff")
-
-    # ---------------------------
-    # commit
-    # ---------------------------
+    print("\n🌿 Creating branch\n")
 
     branch = f"ai-fix-{issue_number}"
 
     run(f"git checkout -b {branch}")
+
     run("git add .")
+
     run(f'git commit -m "AI fix for issue #{issue_number}"')
 
-    # ---------------------------
-    # push
-    # ---------------------------
-
     run(f"git push origin {branch}")
-
-    # ---------------------------
-    # create PR
-    # ---------------------------
 
     run("gh pr create --fill")
 
