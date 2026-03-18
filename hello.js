@@ -1,5 +1,5 @@
 function hello() {
-    console.log("こんにちわ");
+    console.log("こんばんわ");
 }
 
 hello();
